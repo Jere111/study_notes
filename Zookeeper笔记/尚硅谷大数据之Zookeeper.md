@@ -65,3 +65,37 @@ Zookeeper数据模型的结构与Unix文件系统很类似，整体上可以看�
 
 ### 1.5 下载地址
 
+
+
+## 第二章Zookeeper安装
+
+### 2.1 本地模式安装部署
+
+
+
+### 2.2 配置参数解读
+
+Zookeeper中的配置文件zoo.cfg中参数含义解读如下：
+
+1. tickTime=2000：通信心跳数，Zookeeper服务器与客户端心跳时间，单位毫秒
+
+   Zookeeper使用的基本时间，服务器之间或客户端之间维持心跳的时间间隔，也就是每个tickTime时间就会发送一个心跳，时间单位为毫秒。
+
+   它用于心跳机制，并且设置最小的session超时时间为两倍心跳时间。（session的最小超时时间是2*tickTime）。
+
+2. initLimit=10：LF初始通信时限
+
+   集群中的Follower跟随者服务器与Leader领导者服务器之间初始化连接时能容忍的最多心跳数（tickTime的数量），用它来限定集群中Zookeeper服务器连接到 Leader的时限。
+
+3. syncLimit=5：LF同步通信时限
+
+   集群中Leader与Follower之间的最大响应时间单位，假如响应超过syncLimit*ticketTime，Leader认为Follower死掉，从服务器列表中删除Follower。
+
+4. dataDir：数据目录文件+数据持久化路径
+
+   主要用于保存Zookeeper中的数据。
+
+## 第三章Zookeeper内部原理
+
+### 3.1 选举机制 
+
