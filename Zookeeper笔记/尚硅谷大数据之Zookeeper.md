@@ -143,11 +143,39 @@ Zookeeper中的配置文件zoo.cfg中参数含义解读如下：
 
 ### 3.4 监听器原理
 
+#### 3.4.1 监听原理详解
 
+1）首先要有一个main()线程。
+
+2）在main线程中创建Zookeeper客户端，这时就会创建两个线程，一个负责网络连接通信（connect），一个负责监听（listener）。
+
+3）通过connect线程将注册的监听事件发给Zookeeper。
+
+4）在Zookeeper的注册监听器列表中将注册的监听事件添加到列表中。
+
+5）Zookeeper监听到有数据或路径变化，就会将这个消息发送给listener线程。
+
+6）listener线程内部调用process()方法。
+
+#### 3.4.2 常见的监听
+
+1）监听节点数据的变化
+
+​	get path [watch]
+
+2）监听子节点增减的变化
+
+​	ls path [watch]
 
 ### 3.5 写数据流程
 
+1）client向Zookeeper的Server1上写数据，发送一个写请求。
 
+2）如果Server1不是Leader，那么Server1就会把接收到的请求进一步转发给Leader，因为每个Zookeeper的Server里面有一个Leader，这个Leader会将写请求广播给各个Server，比如Server1和Server2，各个Server写成功后就会通知Leader。
+
+3）当Leader收到大多数Server数据写成功了，那么就说明数据写成功了，如果这里有3个节点的话，只要有两个节点数据写成功了，那么就认为数据写成功了，写成功后，Leader会告诉Server1数据写成功了。
+
+4）Server1会进一步通知Client数据写成功了，这时就认为整个写操作成功。
 
 ## 第四章Zookeeper实战
 
