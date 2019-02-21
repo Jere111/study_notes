@@ -99,3 +99,61 @@ Zookeeper中的配置文件zoo.cfg中参数含义解读如下：
 
 ### 3.1 选举机制 
 
+1）半数机制：集群中半数以上的机器存活，集群可用，所以Zookeeper适合安装奇数台服务器。
+
+
+
+### 3.2 节点类型
+
+持久：客户端和服务器断开连接后，创建的节点不删除，除非我们主动删除。
+
+临时：与客户端会话生命周期绑定，客户端与服务器连接断开后，创建的节点自动删除。
+
+持久化顺序节点：
+
+临时顺序节点：
+
+### 3.3 Stat结构体
+
+1）czxid：创建节点的事务zxid
+
+​	每次修改Zookeeper状态都会收到一个zxid形式的时间戳，也就是Zookeeper事务ID。
+
+​	事务ID是Zookeeper中所有修改总的次序，每个修改都有唯一的zxid，如果zxid1小于zxid2，那么zxid1在		 zxid2之前发生。
+
+2）ctime：znode被创建的毫秒数（从1970年开始）。
+
+3）mzxid：znode最后更新的事务zxid。
+
+4）mtime：znode最后修改的毫秒数（从1970年开始）。
+
+5）pzxid：znode最后更新的子节点zxid。
+
+6）cvesion：znode子节点变化号，znode子节点修改次数。
+
+7）dataversion：znode数据变化号。
+
+8）aclVersion：znode控制访问列表的变化号。
+
+9）ephemeralOwner：如果是临时节点，这个是znode拥有者的session id，如果不是临时节点则是0。
+
+10）dataLength：znode的数据长度。
+
+11）munChildren：znode子节点数量。
+
+### 3.4 监听器原理
+
+
+
+### 3.5 写数据流程
+
+
+
+## 第四章Zookeeper实战
+
+### 4.1 分布式安装部署
+
+
+
+### 4.2 Shell命令操作
+
