@@ -400,3 +400,222 @@ set 指令的方案，适合用于在单机 Redis 节点的场景下，在多 Re
 当然，实际上 Redis 真的真的真的不推荐作为消息队列使用，它最多只是消息队列的存储层，上层的逻辑，还需要做大量的封装和支持。
 
 另外，在 Redis 5.0 增加了 Stream 功能，一个新的强大的支持多播的可持久化的消息队列，提供类似 Kafka 的功能。
+
+## 16、什么是 Redis Pipelining ？
+
+一次请求/响应服务器能实现处理新的请求即使旧的请求还未被响应。这样就可以将多个命令发送到服务器，而不用等待回复，最后在一个步骤中读取该答复。
+
+这就是管道（pipelining），是一种几十年来广泛使用的技术。例如许多 POP3 协议已经实现支持这个功能，大大加快了从服务器下载新邮件的过程。
+
+Redis 很早就支持管道（[pipelining](http://redis.cn/topics/pipelining.html)）技术，因此无论你运行的是什么版本，你都可以使用管道（pipelining）操作 Redis。
+
+ **Redis 如何做大量数据插入？**
+
+Redis2.6 开始，Redis-cli 支持一种新的被称之为 pipe mode 的新模式用于执行大量数据插入工作。
+
+具体可见 [《Redis 大量数据插入》](http://www.redis.cn/topics/mass-insert.html) 文章。
+
+## 17、什么是 Redis 事务？
+
+和众多其它数据库一样，Redis 作为 NoSQL 数据库也同样提供了事务机制。在Redis中，MULTI / EXEC / DISCARD / WATCH 这四个命令是我们实现事务的基石。相信对有关系型数据库开发经验的开发者而言这一概念并不陌生，即便如此，我们还是会简要的列出 Redis 中事务的实现特征：
+
+- 1、在事务中的所有命令都将会被串行化的顺序执行，事务执行期间，Redis 不会再为其它客户端的请求提供任何服务，从而保证了事物中的所有命令被原子的执行。
+
+- 2、和关系型数据库中的事务相比，在 Redis 事务中如果有某一条命令执行失败，其后的命令仍然会被继续执行。
+
+- 3、我们可以通过 MULTI 命令开启一个事务，有关系型数据库开发经验的人可以将其理解为 `"BEGIN TRANSACTION"` 语句。在该语句之后执行的命令都，将被视为事务之内的操作，最后我们可以通过执行 EXEC / DISCARD 命令来提交 / 回滚该事务内的所有操作。这两个 Redis 命令，可被视为等同于关系型数据库中的 COMMIT / ROLLBACK 语句。
+
+- 4、在事务开启之前，如果客户端与服务器之间出现通讯故障并导致网络断开，其后所有待执行的语句都将不会被服务器执行。然而如果网络中断事件是发生在客户端执行 EXEC 命令之后，那么该事务中的所有命令都会被服务器执行。
+
+- 5、当使用 Append-Only 模式时，Redis 会通过调用系统函数 write 将该事务内的所有写操作在本次调用中全部写入磁盘。然而如果在写入的过程中出现系统崩溃，如电源故障导致的宕机，那么此时也许只有部分数据被写入到磁盘，而另外一部分数据却已经丢失。
+
+  > Redis 服务器会在重新启动时执行一系列必要的一致性检测，一旦发现类似问题，就会立即退出并给出相应的错误提示。此时，我们就要充分利用 Redis 工具包中提供的 redis-check-aof 工具，该工具可以帮助我们定位到数据不一致的错误，并将已经写入的部分数据进行回滚。修复之后我们就可以再次重新启动Redis服务器了。
+
+### 17.1 **如何实现 Redis CAS 操作？**
+
+在 Redis 的事务中，WATCH 命令可用于提供CAS(check-and-set)功能。
+
+假设我们通过 WATCH 命令在事务执行之前监控了多个 keys ，倘若在 WATCH 之后有任何 Key 的值发生了变化，EXEC 命令执行的事务都将被放弃，同时返回 `nil` 应答以通知调用者事务执行失败。
+
+具体的示例，可以看看 [《Redis 事务锁 CAS 实现以及深入误区》](https://www.jianshu.com/p/0244a875aa26) 。
+
+## 18、Redis 集群都有哪些方案？
+
+Redis 集群方案如下：
+
+- 1、Redis Sentinel
+- 2、Redis Cluster
+- 3、Twemproxy
+- 4、Codis
+- 5、客户端分片
+
+关于前四种，可以看看 [《Redis 实战（四）集群机制》](http://blog.720ui.com/2016/redis_action_04_cluster/) 这篇文章。
+
+关于最后一种，客户端分片，在 Redis Cluster 出现之前使用较多，目前已经使用比较少了。实现方式如下：
+
+> 在业务代码层实现，起几个毫无关联的 Redis 实例，在代码层，对 Key 进行 hash 计算，然后去对应的 Redis 实例操作数据。
+>
+> 这种方式对 hash 层代码要求比较高，考虑部分包括，节点失效后的替代算法方案，数据震荡后的自动脚本恢复，实例的监控，等等。
+
+**选择**
+
+目前一般在选型上来说：
+
+- 体量较小时，选择 Redis Sentinel ，单主 Redis 足以支撑业务。
+- 体量较大时，选择 Redis Cluster ，通过分片，使用更多内存。
+
+## 19、什么是 Redis 主从同步？
+
+**Redis 主从同步**
+
+Redis 的主从同步(replication)机制，允许 Slave 从 Master 那里，通过网络传输拷贝到完整的数据备份，从而达到主从机制。
+
+- 主数据库可以进行读写操作，当发生写操作的时候自动将数据同步到从数据库，而从数据库一般是只读的，并接收主数据库同步过来的数据。
+- 一个主数据库可以有多个从数据库，而一个从数据库只能有一个主数据库。
+- 第一次同步时，主节点做一次 bgsave 操作，并同时将后续修改操作记录到内存 buffer ，待完成后将 RDB 文件全量同步到复制节点，复制节点接受完成后将 RDB 镜像加载到内存。加载完成后，再通知主节点将期间修改的操作记录同步到复制节点进行重放就完成了同步过程。
+
+**好处**
+
+通过 Redis 的复制功，能可以很好的实现数据库的读写分离，提高服务器的负载能力。主数据库主要进行写操作，而从数据库负责读操作。
+
+------
+
+Redis 主从同步，是很多 Redis 集群方案的基础，例如 Redis Sentinel、Redis Cluster 等等。
+
+更多详细，可以看看 [《Redis 主从架构》](https://github.com/doocs/advanced-java/blob/master/docs/high-concurrency/redis-master-slave.md) 。
+
+## 20、如何使用 Redis Sentinel 实现高可用？
+
+可以看看 [《Redis 哨兵集群实现高可用》](https://github.com/doocs/advanced-java/blob/master/docs/high-concurrency/redis-sentinel.md) 。
+
+## 21、如何使用 Redis Cluster 实现高可用？
+
+可以看看
+
+- [《Redis 集群教程》](http://redis.cn/topics/cluster-tutorial.html) 完整版
+- [《Redis 集群模式的工作原理能说一下么？》](https://github.com/doocs/advanced-java/blob/master/docs/high-concurrency/redis-cluster.md) 精简版
+
+**说说 Redis 哈希槽的概念？**
+
+Redis Cluster 没有使用一致性 hash ，而是引入了哈希槽的概念。
+
+Redis 集群有 16384 个哈希槽，每个 key 通过 CRC16 校验后对 16384 取模来决定放置哪个槽，集群的每个节点负责一部分 hash 槽。
+
+因为最大是 16384 个哈希槽，所以考虑 Redis 集群中的每个节点都能分配到一个哈希槽，所以最多支持 16384 个 Redis 节点。
+
+**Redis Cluster 的主从复制模型是怎样的？**
+
+为了使在部分节点失败或者大部分节点无法通信的情况下集群仍然可用，所以集群使用了**主从复制**模型，每个节点都会有 N-1 个复制节点。
+
+所以，Redis Cluster 可以说是 Redis Sentinel 带分片的加强版。也可以说：
+
+- Redis Sentinel 着眼于高可用，在 master 宕机时会自动将 slave 提升为 master ，继续提供服务。
+- Redis Cluster 着眼于扩展性，在单个 Redis 内存不足时，使用Cluster 进行分片存储。
+
+## 22、Redis 有哪些重要的健康指标？
+
+推荐阅读 [《Redis 几个重要的健康指标》](https://mp.weixin.qq.com/s/D_khsApGkRckEoV75pYpDA)
+
+- 存活情况
+- 连接数
+- 阻塞客户端数量
+- 使用内存峰值
+- 内存碎片率
+- 缓存命中率
+- OPS
+- 持久化
+- 失效KEY
+- 慢日志
+
+**如何提高 Redis 命中率？**
+
+推荐阅读 [《如何提高缓存命中率（Redis）》](http://www.cnblogs.com/shamo89/p/8383915.html) 。
+
+## 23、怎么优化 Redis 的内存占用
+
+推荐阅读 [《Redis 的内存优化》](https://www.jianshu.com/p/8677603d3865)
+
+- redisObject 对象
+- 缩减键值对象
+- 共享对象池
+- 字符串优化
+- 编码优化
+- 控制 key 的数量
+
+🦅 **一个 Redis 实例最多能存放多少的 keys？List、Set、Sorted Set 他们最多能存放多少元素？**
+
+一个 Redis 实例，最多能存放多少的 keys ，List、Set、Sorted Set 他们最多能存放多少元素。
+
+理论上，Redis 可以处理多达 2^32 的 keys ，并且在实际中进行了测试，每个实例至少存放了 2 亿 5 千万的 keys。
+
+任何 list、set、和 sorted set 都可以放 2^32 个元素。
+
+🦅 **假如 Redis 里面有 1 亿个 key，其中有 10w 个 key 是以某个固定的已知的前缀开头的，如果将它们全部找出来？**
+
+使用 keys 指令可以扫出指定模式的 key 列表。
+
+- 对方接着追问：如果这个 Redis 正在给线上的业务提供服务，那使用keys指令会有什么问题？
+- 这个时候你要回答 Redis 关键的一个特性：Redis 的单线程的。keys 指令会导致线程阻塞一段时间，线上服务会停顿，直到指令执行完毕，服务才能恢复。这个时候可以使用 scan 指令，scan 指令可以无阻塞的提取出指定模式的 key 列表，但是会有一定的重复概率，在客户端做一次去重就可以了，但是整体所花费的时间会比直接用 keys 指令长。
+
+## 24、Redis 常见的性能问题都有哪些？如何解决？
+
+- 1、
+
+  Master 最好不要做任何持久化工作，如 RDB 内存快照和 AOF 日志文件
+
+  。
+
+  - Master 写内存快照，save 命令调度 rdbSave 函数，会阻塞主线程的工作，当快照比较大时对性能影响是非常大的，会间断性暂停服务，所以 Master 最好不要写内存快照。
+  - Master AOF 持久化，如果不重写 AOF 文件，这个持久化方式对性能的影响是最小的，但是 AOF 文件会不断增大，AOF 文件过大会影响 Master 重启的恢复速度。
+  - 所以，Master 最好不要做任何持久化工作，包括内存快照和 AOF 日志文件，特别是不要启用内存快照做持久化。如果数据比较关键，某个 Slave 开启AOF备份数据，策略为每秒同步一次。
+
+- 2、Master 调用 BGREWRITEAOF 重写 AOF 文件，AOF 在重写的时候会占大量的 CPU 和内存资源，导致服务 load 过高，出现短暂服务暂停现象。
+
+  - TODO 怎么解决？
+
+- 3、尽量避免在压力很大的主库上增加从库。
+
+  - TODO 怎么解决？
+
+- 4、主从复制不要用图状结构，用单向链表结构更为稳定，即：
+
+  ```
+  Master <- Slave1 <- Slave2 <- Slave3...
+  ```
+
+  - 这样的结构，也方便解决单点故障问题，实现 Slave 对 Master 的替换。如果 Master挂了，可以立刻启用 Slave1 做 Master ，其他不变。
+
+- 5、Redis 主从复制的性能问题，为了主从复制的速度和连接的稳定性，Slave 和 Master 最好在同一个局域网内。
+
+------
+
+和飞哥沟通过后，他们主节点开启 AOF ，从节点开启 AOF + RDB 。
+
+和晓峰沟通后，他们主节点开启 AOF ，从节点开启 RDB 居多，也有开启 AOF + RDB 的。
+
+## 25、修改配置不重启 Redis 会实时生效吗？
+
+针对运行实例，有许多配置选项可以通过 `CONFIG SET` 命令进行修改，而无需执行任何形式的重启。
+
+从 Redis 2.2 开始，可以从 AOF 切换到 RDB 的快照持久性或其他方式而不需要重启 Redis。检索 `CONFIG GET *` 命令获取更多信息。
+
+但偶尔重新启动是必须的，如为升级 Redis 程序到新的版本，或者当你需要修改某些目前 CONFIG 命令还不支持的配置参数的时候。
+
+## 26、其他问题
+
+- Skiplist 插入和查询原理？
+
+- 压缩列表的原理？
+
+- Redis 底层为什么使用跳跃表而不是红黑树？
+
+  > 跳跃表在范围查找的时候性能比较高。
+
+参考与推荐如下文章：
+
+- JeffreyLcm [《Redis 面试题》](https://segmentfault.com/a/1190000014507534)
+- 烙印99 [《史上最全 Redis 面试题及答案》](https://www.imooc.com/article/36399)
+- yanglbme [《Redis 和 Memcached 有什么区别？Redis 的线程模型是什么？为什么单线程的 Redis 比多线程的 Memcached 效率要高得多？》](https://github.com/doocs/advanced-java/blob/master/docs/high-concurrency/redis-single-thread-model.md)
+- 老钱 [《天下无难试之 Redis 面试题刁难大全》](https://zhuanlan.zhihu.com/p/32540678)
+- yanglbme [《Redis 的持久化有哪几种方式？不同的持久化机制都有什么优缺点？持久化机制具体底层是如何实现的？》](https://github.com/doocs/advanced-java/blob/master/docs/high-concurrency/redis-persistence.md)
+
