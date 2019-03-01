@@ -42,6 +42,12 @@
 # systemctl status telnet.cocket 再次查看服务状态
 ```
 
+**验证telnet是否开启**
+
+```sh
+# telnet localhost 23
+```
+
 ### 1.4 安装编译所需工具包
 
 ```sh
